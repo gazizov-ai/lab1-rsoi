@@ -74,9 +74,13 @@ jobs:
           fi
 
       - name: Run unit tests
+        working-directory: person-service
+        env:
+          DATABASE_URL: postgres://program:test@postgres:5432/persons?sslmode=disable
         run: go test ./... -v
 
       - name: Build (sanity check)
+        working-directory: person-service
         run: go build ./...
 
       - name: Deploy to Render via API
