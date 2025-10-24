@@ -1,0 +1,45 @@
+name: Test CI
+
+on:
+  push:
+    branches: [ main, master, feature/** ]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: program
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: persons
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U program -d persons"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DATABASE_URL: postgres://program:test@localhost:5432/persons?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U program -d persons; then
+              echo "Postgres ready"; break
+            fi
+            sleep 2
+          done
+          psql "${DATABASE_URL}" -f migrate.sql
+      - run: go test ./... -v
+      - run: docker build -t persons:ci .
