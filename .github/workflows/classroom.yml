@@ -81,7 +81,7 @@ jobs:
 
       - name: Build (sanity check)
         working-directory: person-service
-        run: go build ./...
+        run: go build -buildvcs=false ./...
 
       - name: Deploy to Render via API
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
