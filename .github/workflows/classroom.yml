@@ -10,6 +10,7 @@ jobs:
   build:
     name: Autograding
     runs-on: ubuntu-latest
+    container: golang:1.23
 
     services:
       postgres:
@@ -24,18 +25,10 @@ jobs:
           --health-timeout=5s
           --health-retries=30
 
-    env:
-      DATABASE_URL: postgres://program:test@postgres:5432/persons?sslmode=disable
-
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22.x'
 
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client netcat-openbsd
@@ -44,6 +37,7 @@ jobs:
         shell: bash
         env:
           PGPASSWORD: test
+          DATABASE_URL: postgres://program:test@postgres:5432/persons?sslmode=disable
         run: |
           echo "Resolving service host..."
           getent hosts postgres || { echo "DNS for 'postgres' not available"; exit 1; }
@@ -82,8 +76,8 @@ jobs:
       - name: Run unit tests
         run: go test ./... -v
 
-      - name: Docker build (sanity check)
-        run: docker build -t persons:ci .
+      - name: Build (sanity check)
+        run: go build ./...
 
       - name: Deploy to Render via API
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
