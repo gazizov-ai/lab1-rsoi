@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install psql client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client netcat-openbsd
+        run: apt-get update && apt-get install -y postgresql-client netcat-openbsd
 
       - name: Wait for Postgres & migrate
         shell: bash
