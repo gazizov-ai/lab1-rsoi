@@ -84,7 +84,6 @@ jobs:
         run: go build -buildvcs=false ./...
 
       - name: Deploy to Render via API
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
@@ -98,6 +97,20 @@ jobs:
             -H "Content-Type: application/json" \
             "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys"
 
+      - name: Wait until Render is live
+        env:
+          URL: ${{ env.RENDER_BASE_URL }}/api/v1/persons
+        run: |
+          echo "Waiting for $URL to return 200..."
+          for i in {1..90}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL") || code=000
+            if [ "$code" = "200" ] || [ "$code" = "204" ] || [ "$code" = "404" ]; then
+              echo "Service is responding with $code"; exit 0
+            fi
+            echo "not ready yet (http $code), try $i"; sleep 4
+          done
+          echo "Render service didn't become ready in time"; exit 1
+      
       - name: Run API Tests
         uses: matt-ball/newman-action@master
         with:
