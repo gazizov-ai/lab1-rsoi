@@ -10,6 +10,23 @@ jobs:
   build:
     name: Autograding
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: program
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: persons
+        options: >-
+          --health-cmd="pg_isready -U program -d persons"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      DATABASE_URL: postgres://program:test@postgres:5432/persons?sslmode=disable
+
     steps:
       - uses: actions/checkout@v3
         with:
