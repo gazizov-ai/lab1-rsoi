@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           for i in {1..60}; do
-            if pg_isready -h localhost -p 5432 -U program -d persons; then
+            if pg_isready -h postgres -p 5432 -U program -d persons; then
               echo "Postgres is ready"; break
             fi
             echo "Waiting for Postgres... ($i)"; sleep 2
