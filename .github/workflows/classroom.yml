@@ -15,7 +15,57 @@ jobs:
         with:
           fetch-depth: 0
 
-      # TODO build, test and deploy project
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres & migrate
+        shell: bash
+        run: |
+          for i in {1..60}; do
+            if pg_isready -h localhost -p 5432 -U program -d persons; then
+              echo "Postgres is ready"; break
+            fi
+            echo "Waiting for Postgres... ($i)"; sleep 2
+          done
+          if [ -f migrate.sql ]; then
+            psql "$DATABASE_URL" -f migrate.sql
+          else
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+              CREATE TABLE IF NOT EXISTS persons (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                age INTEGER,
+                address TEXT,
+                work TEXT
+              );
+            "
+          fi
+
+      - name: Run unit tests
+        run: go test ./... -v
+
+      - name: Docker build (sanity check)
+        run: docker build -t persons:ci .
+
+      - name: Deploy to Render via API
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "RENDER_API_KEY or RENDER_SERVICE_ID not set" >&2
+            exit 1
+          fi
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys"
 
       - name: Run API Tests
         uses: matt-ball/newman-action@master
