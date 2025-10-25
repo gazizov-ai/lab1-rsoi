@@ -10,28 +10,57 @@ jobs:
   build:
     name: Autograding
     runs-on: ubuntu-latest
+    container: golang:1.23
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: program
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: persons
+        options: >-
+          --health-cmd="pg_isready -U program -d persons"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22.x'
-
       - name: Install psql client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+        run: |
+          apt-get update && apt-get install -y postgresql-client netcat-openbsd nodejs npm
+          npm install -g newman
 
       - name: Wait for Postgres & migrate
         shell: bash
+        env:
+          PGPASSWORD: test
+          DATABASE_URL: postgres://program:test@postgres:5432/persons?sslmode=disable
         run: |
+          echo "Resolving service host..."
+          getent hosts postgres || { echo "DNS for 'postgres' not available"; exit 1; }
+          echo "Probing TCP port..."
           for i in {1..60}; do
-            if pg_isready -h localhost -p 5432 -U program -d persons; then
+            if nc -z postgres 5432; then
+              echo "TCP 5432 is open"; break
+            fi
+            echo "Waiting for TCP 5432... ($i)"; sleep 2
+          done
+          echo "Checking pg_isready..."
+          for i in {1..60}; do
+            if pg_isready -h postgres -p 5432 -U program -d persons; then
               echo "Postgres is ready"; break
             fi
             echo "Waiting for Postgres... ($i)"; sleep 2
           done
+          echo "Sanity query..."
+          psql "postgresql://program:test@postgres:5432/persons?sslmode=disable" -c 'SELECT 1;'
+
+          # Миграция
           if [ -f migrate.sql ]; then
             psql "$DATABASE_URL" -f migrate.sql
           else
@@ -47,13 +76,16 @@ jobs:
           fi
 
       - name: Run unit tests
+        working-directory: person-service
+        env:
+          DATABASE_URL: postgres://program:test@postgres:5432/persons?sslmode=disable
         run: go test ./... -v
 
-      - name: Docker build (sanity check)
-        run: docker build -t persons:ci .
+      - name: Build (sanity check)
+        working-directory: person-service
+        run: go build -buildvcs=false ./...
 
       - name: Deploy to Render via API
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
@@ -67,6 +99,20 @@ jobs:
             -H "Content-Type: application/json" \
             "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys"
 
+      - name: Wait until Render is live
+        env:
+          URL: https://gazizov-ai-lab1-rsoi.onrender.com/api/v1/persons
+        run: |
+          echo "Waiting for $URL to return 200..."
+          for i in {1..90}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL") || code=000
+            if [ "$code" = "200" ] || [ "$code" = "204" ] || [ "$code" = "404" ]; then
+              echo "Service is responding with $code"; exit 0
+            fi
+            echo "not ready yet (http $code), try $i"; sleep 4
+          done
+          echo "Render service didn't become ready in time"; exit 1
+      
       - name: Run API Tests
         uses: matt-ball/newman-action@master
         with:
