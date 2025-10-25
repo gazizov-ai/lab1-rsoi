@@ -99,7 +99,7 @@ jobs:
 
       - name: Wait until Render is live
         env:
-          URL: ${{ env.RENDER_BASE_URL }}/api/v1/persons
+          URL: https://gazizov-ai-lab1-rsoi.onrender.com/api/v1/persons
         run: |
           echo "Waiting for $URL to return 200..."
           for i in {1..90}; do
