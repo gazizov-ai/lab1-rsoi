@@ -31,7 +31,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install psql client
-        run: apt-get update && apt-get install -y postgresql-client netcat-openbsd
+        run: |
+          apt-get update && apt-get install -y postgresql-client netcat-openbsd nodejs npm
+          npm install -g newman
 
       - name: Wait for Postgres & migrate
         shell: bash
